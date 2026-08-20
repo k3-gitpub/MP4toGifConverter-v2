@@ -57,6 +57,35 @@
             font-weight: bold;
             color: #343a40;
         }
+        .playback-mode-toggle {
+            display: flex;
+            justify-content: center;
+            gap: 0;
+            margin-top: 12px;
+        }
+        .playback-mode-toggle button {
+            padding: 8px 16px;
+            font-size: 14px;
+            border: 1px solid #ced4da;
+            background: #fff;
+            color: #495057;
+            cursor: pointer;
+        }
+        .playback-mode-toggle button:first-child {
+            border-radius: 4px 0 0 4px;
+        }
+        .playback-mode-toggle button:last-child {
+            border-radius: 0 4px 4px 0;
+            border-left: none;
+        }
+        .playback-mode-toggle button.active {
+            background: #007bff;
+            color: #fff;
+            border-color: #007bff;
+        }
+        .playback-mode-toggle button:hover:not(.active) {
+            background: #e9ecef;
+        }
     </style>
 </head>
 <body>
@@ -67,6 +96,10 @@
         <video id="video-preview" controls width="100%" muted></video>
         <div id="duration-display" class="duration-display"></div>
         <div id="slider-container"></div>
+        <div class="playback-mode-toggle" role="group" aria-label="プレビュー再生モード">
+            <button type="button" id="playback-mode-loop" data-mode="loop">ループ再生</button>
+            <button type="button" id="playback-mode-once" class="active" data-mode="once">1回再生</button>
+        </div>
     </div>
 
     <div class="card">
@@ -151,6 +184,46 @@
             }
         }
 
+        /** スライダー上の選択範囲 (開始秒, 終了秒) を返す */
+        function getSelectionRange() {
+            if (!rangeSlider) return null;
+            const values = rangeSlider.get().map(v => parseFloat(v));
+            return { start: values[0], end: values[1] };
+        }
+
+        // プレビュー再生モード: 'loop' | 'once'（既定は1回再生、localStorage に保存）
+        const PREVIEW_PLAYBACK_MODE_KEY = 'previewPlaybackMode';
+        let previewPlaybackMode = 'once';
+        const playbackModeLoopBtn = document.getElementById('playback-mode-loop');
+        const playbackModeOnceBtn = document.getElementById('playback-mode-once');
+
+        function setPreviewPlaybackMode(mode, persist = true) {
+            previewPlaybackMode = mode === 'loop' ? 'loop' : 'once';
+            playbackModeLoopBtn.classList.toggle('active', previewPlaybackMode === 'loop');
+            playbackModeOnceBtn.classList.toggle('active', previewPlaybackMode === 'once');
+            if (persist) {
+                try {
+                    localStorage.setItem(PREVIEW_PLAYBACK_MODE_KEY, previewPlaybackMode);
+                } catch (e) {
+                    console.error("Could not save preview playback mode:", e);
+                }
+            }
+        }
+
+        try {
+            const savedMode = localStorage.getItem(PREVIEW_PLAYBACK_MODE_KEY);
+            if (savedMode === 'loop' || savedMode === 'once') {
+                setPreviewPlaybackMode(savedMode, false);
+            } else {
+                setPreviewPlaybackMode('once', false);
+            }
+        } catch (e) {
+            setPreviewPlaybackMode('once', false);
+        }
+
+        playbackModeLoopBtn.addEventListener('click', () => setPreviewPlaybackMode('loop'));
+        playbackModeOnceBtn.addEventListener('click', () => setPreviewPlaybackMode('once'));
+
         /**
          * スライダーと関連イベントをセットアップする関数
          */
@@ -229,6 +302,30 @@
             if (videoPreview.duration > 0 && !isSliderSetup) {
                 isSliderSetup = true; // セットアップフラグを立て、二重実行を防ぐ
                 setupSliderAndEvents();
+            }
+        });
+
+        // --- プレビュー再生を選択範囲に合わせる ---
+        videoPreview.addEventListener('play', () => {
+            const range = getSelectionRange();
+            if (!range) return;
+            if (videoPreview.currentTime < range.start || videoPreview.currentTime >= range.end - 0.05) {
+                videoPreview.currentTime = range.start;
+            }
+        });
+
+        videoPreview.addEventListener('timeupdate', () => {
+            const range = getSelectionRange();
+            if (!range || videoPreview.paused) return;
+            if (videoPreview.currentTime < range.start) {
+                videoPreview.currentTime = range.start;
+            } else if (videoPreview.currentTime >= range.end) {
+                if (previewPlaybackMode === 'loop') {
+                    videoPreview.currentTime = range.start;
+                } else {
+                    videoPreview.pause();
+                    videoPreview.currentTime = range.start;
+                }
             }
         });
 

@@ -8,6 +8,9 @@ AppVersion=1.2
 AppPublisher=k3
 AppPublisherURL=https://www.vector.co.jp/soft/winnt/art/se527852.html?ds
 
+; インストーラー自体のアイコン（.iss と同じフォルダの app_icon.ico）
+SetupIconFile=app_icon.ico
+
 ; 管理者権限を要求せず、ユーザーごとにインストールする
 PrivilegesRequired=lowest
 
@@ -23,7 +26,7 @@ Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
 ; アンインストーラーにアプリアイコンを表示
-UninstallDisplayIcon={app}\mp4-to-gif-converter.exe
+UninstallDisplayIcon={app}\app_icon.ico
 
 [Languages]
 Name: "japanese"; MessagesFile: "compiler:Default.isl"
@@ -34,12 +37,14 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 ; アプリの配布フォルダの中身をすべてコピーします。
 Source: "C:\Users\kakik\Desktop\mp4-to-gif-converter-v1.2\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; ショートカット／アンインストーラ用アイコン
+Source: "app_icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 
 [Icons]
 ; スタートメニューとデスクトップにショートカットを作成します。
-Name: "{group}\MP4-to-GIF-Converter"; Filename: "{app}\MP4-to-GIF-Converter.exe"
-Name: "{autodesktop}\MP4-to-GIF-Converter"; Filename: "{app}\MP4-to-GIF-Converter.exe"; Tasks: desktopicon
+Name: "{group}\MP4-to-GIF-Converter"; Filename: "{app}\MP4-to-GIF-Converter.exe"; IconFilename: "{app}\app_icon.ico"
+Name: "{autodesktop}\MP4-to-GIF-Converter"; Filename: "{app}\MP4-to-GIF-Converter.exe"; IconFilename: "{app}\app_icon.ico"; Tasks: desktopicon
 
 [Run]
 ; インストール完了後にアプリを起動するオプション（任意）

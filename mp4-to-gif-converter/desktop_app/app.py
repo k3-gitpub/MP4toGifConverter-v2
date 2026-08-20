@@ -186,8 +186,19 @@ def licenses():
 
 @app.route('/favicon.ico')
 def favicon():
-    # ブラウザが自動的にリクエストするfavicon.icoに対して、
-    # 「コンテンツなし」を返すことで404エラーを防ぎます。
+    # プロジェクトルート / バンドル内の app_icon.ico があれば返す
+    candidates = []
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        candidates.append(Path(sys._MEIPASS) / 'app_icon.ico')
+        candidates.append(Path(sys.executable).resolve().parent / 'app_icon.ico')
+    else:
+        candidates.append(Path(__file__).resolve().parent.parent / 'app_icon.ico')
+
+    for icon_path in candidates:
+        if icon_path.is_file():
+            return send_file(icon_path, mimetype='image/x-icon')
+
+    # 見つからない場合は 204 で 404 を防ぐ
     return '', 204
 
 @app.route('/load-video')
