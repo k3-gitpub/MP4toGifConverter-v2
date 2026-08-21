@@ -21,8 +21,8 @@ def get_ffmpeg_path():
         ffmpeg_path = base_path / 'bin' / 'ffmpeg.exe'
         ffprobe_path = base_path / 'bin' / 'ffprobe.exe'
     else:
-        # 開発時: プロジェクトルート/bin/ffmpeg.exe
-        base_path = Path(__file__).resolve().parent.parent
+        # 開発時: desktop_app/bin/ffmpeg.exe（setup_ffmpeg.py の配置先）
+        base_path = Path(__file__).resolve().parent
         ffmpeg_path = base_path / 'bin' / 'ffmpeg.exe'
         ffprobe_path = base_path / 'bin' / 'ffprobe.exe'
 
