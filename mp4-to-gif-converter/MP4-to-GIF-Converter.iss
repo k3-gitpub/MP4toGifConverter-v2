@@ -56,4 +56,4 @@ Filename: "{app}\MP4-to-GIF-Converter.exe"; Description: "{cm:LaunchProgram,MP4-
 ; 設定・ログ・一時ファイル（uploads/outputs）
 Type: filesandordirs; Name: "{localappdata}\MP4-to-GIF-Converter"
 ; 旧版がホーム直下に保存していたデータ
-Type: filesandordirs; Name: "{userprofile}\.mp4togifconverter"
+Type: filesandordirs; Name: "{%USERPROFILE}\.mp4togifconverter"
