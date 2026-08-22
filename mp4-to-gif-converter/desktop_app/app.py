@@ -10,9 +10,32 @@ from dataclasses import dataclass
 from pathlib import Path
 from datetime import datetime
 
-# Flaskアプリのインスタンス化。
-# パスに関する設定は、エントリーポイントであるmain.pyに責任を移譲します。
-app = Flask(__name__)
+def get_resource_path(relative_path):
+    """
+    リソースへの絶対パスを取得します。開発環境とPyInstallerバンドルの両方で機能します。
+    PyInstallerでバンドルされた場合、実行時に作成される一時フォルダ (_MEIPASS) 内の
+    パスを返します。
+    """
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        # PyInstallerは一時フォルダを作成し、そのパスを_MEIPASSに格納します
+        base_path = sys._MEIPASS
+    else:
+        try:
+            # バンドルされていない、通常のPython環境での実行
+            # このファイルの親ディレクトリ（desktop_app）を基準にします
+            base_path = os.path.dirname(os.path.abspath(__file__))
+        except NameError:
+            # __file__ が未定義の場合 (例: REPL)、CWDを基準にします。
+            # この場合、ターミナルがプロジェクトのルートディレクトリで
+            # 開かれている必要があります。
+            base_path = os.path.abspath("desktop_app")
+    return os.path.join(base_path, relative_path)
+
+# Flaskアプリのインスタンス化。テンプレートと静的ファイルのパスを明示的に指定します。
+# FFmpegのパスはエントリーポイントであるmain.pyで設定します。
+template_folder = get_resource_path('templates')
+static_folder = get_resource_path('static')
+app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
 # FlaskとWerkzeugのデフォルトロガーを無効にし、main.pyで設定されたロガーに統一する
 app.logger.disabled = True 
 log = logging.getLogger('werkzeug') 

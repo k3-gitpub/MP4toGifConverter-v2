@@ -1,5 +1,6 @@
 import sys
 import os
+import shutil
 
 import webview
 import json
@@ -7,7 +8,7 @@ from pathlib import Path
 import logging
 import subprocess
 import logging.handlers
-from app import app, tasks_db
+from app import app, tasks_db, app_data_dir
 
 # --- FFmpeg/FFprobe パス解決 ---
 def get_ffmpeg_path():
@@ -33,18 +34,36 @@ def get_ffmpeg_path():
     return str(ffmpeg_path), str(ffprobe_path)
 
 # --- アプリケーションデータディレクトリの設定 ---
-# ユーザーの環境を汚さないよう、設定ファイルは専用のフォルダに保存します。
-# クロスプラットフォームで動作するよう、ユーザーのホームディレクトリ以下に作成します。
-# 例: C:\Users\YourUser\.mp4togifconverter
-APP_NAME = "MP4toGIFConverter"
+# 設定・ログは app.py の一時ファイルと同じ LocalAppData 配下に保存します。
+# 例: C:\Users\<ユーザー名>\AppData\Local\MP4-to-GIF-Converter
+# 旧版はホーム直下の ~/.mp4togifconverter を使っていたため、初回起動時に移します。
+LEGACY_APP_DATA_DIR = Path.home() / ".mp4togifconverter"
+
+def _migrate_legacy_app_data(old_dir: Path, new_dir: Path) -> None:
+    """旧ホーム配下の設定・ログを LocalAppData へ、未コピー分だけ移す。"""
+    try:
+        if not old_dir.is_dir():
+            return
+        if old_dir.resolve() == new_dir.resolve():
+            return
+        for src in old_dir.iterdir():
+            if not src.is_file():
+                continue
+            dst = new_dir / src.name
+            if dst.exists():
+                continue
+            shutil.copy2(src, dst)
+    except Exception as e:
+        print(f"WARNING: Could not migrate legacy app data from {old_dir}: {e}", file=sys.stderr)
+
 try:
-    # PyInstallerでバンドルされた場合でもホームディレクトリを正しく取得
-    APP_DATA_DIR = Path.home() / f".{APP_NAME.lower()}"
-    APP_DATA_DIR.mkdir(exist_ok=True) # フォルダがなければ作成
+    APP_DATA_DIR = Path(app_data_dir)
+    APP_DATA_DIR.mkdir(exist_ok=True)
+    _migrate_legacy_app_data(LEGACY_APP_DATA_DIR, APP_DATA_DIR)
 except Exception as e:
-    # ホームディレクトリが取得できない稀なケースではカレントディレクトリにフォールバック
+    # データディレクトリが作れない稀なケースではカレントディレクトリにフォールバック
     # この時点ではロガーが未設定のため、標準エラー出力にフォールバック
-    print(f"CRITICAL: Could not create app data directory in home, falling back to current dir: {e}", file=sys.stderr)
+    print(f"CRITICAL: Could not create app data directory, falling back to current dir: {e}", file=sys.stderr)
     APP_DATA_DIR = Path('.')
 
 # --- ロギング設定 ---

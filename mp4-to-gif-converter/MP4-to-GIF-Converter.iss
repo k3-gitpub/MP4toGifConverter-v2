@@ -29,14 +29,15 @@ WizardStyle=modern
 UninstallDisplayIcon={app}\app_icon.ico
 
 [Languages]
-Name: "japanese"; MessagesFile: "compiler:Default.isl"
+Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; アプリの配布フォルダの中身をすべてコピーします。
-Source: "C:\Users\kakik\Desktop\mp4-to-gif-converter-v1.2\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; PyInstaller onedir 出力（この .iss と同じフォルダからの相対パス）。
+; ビルド後の dist\MP4-to-GIF-Converter\ 一式をインストールします。
+Source: "dist\MP4-to-GIF-Converter\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; ショートカット／アンインストーラ用アイコン
 Source: "app_icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
@@ -52,4 +53,7 @@ Filename: "{app}\MP4-to-GIF-Converter.exe"; Description: "{cm:LaunchProgram,MP4-
 
 [UninstallDelete]
 ; アンインストール時にAppDataに作成したフォルダを削除する
+; 設定・ログ・一時ファイル（uploads/outputs）
 Type: filesandordirs; Name: "{localappdata}\MP4-to-GIF-Converter"
+; 旧版がホーム直下に保存していたデータ
+Type: filesandordirs; Name: "{userprofile}\.mp4togifconverter"
