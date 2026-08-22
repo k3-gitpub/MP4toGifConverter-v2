@@ -2,12 +2,38 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>MP4 to GIF Converter</title>
+    <title>MP4 to GIF Converter 2</title>
     <!-- noUiSlider CSS for range slider -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.min.css" integrity="sha512-qveKnGrvOChbSzAdtSs8p69eoLegyh+1hwOMbmpCViIwj7rn4oJjdmMvWOuyQlTOZgTlZA0N2PXA7iA8/2TUYA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; max-width: 960px; margin: auto; padding: 20px; background-color: #f8f9fa; }
-        h1 { color: #343a40; }
+        /*
+         * フォームUIの縮小設定
+         * --form-scale-min-percent: デフォルト(100%)に対する下限の割合（例: 80 → 80%まで）
+         * --form-scale-ref-width: この幅以上で等倍。狭いほど縮小（下限で打ち止め）
+         */
+        :root {
+            --form-scale-min-percent: 60;
+            --form-scale-ref-width: 1280px;
+            --form-scale-min: calc(var(--form-scale-min-percent) / 100);
+            --form-scale: clamp(
+                var(--form-scale-min),
+                calc(100vw / var(--form-scale-ref-width)),
+                1
+            );
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            max-width: none;
+            width: 100%;
+            margin: auto;
+            padding: 20px;
+            background-color: #f8f9fa;
+            box-sizing: border-box;
+        }
+        h1 {
+            color: #343a40;
+            text-align: center;
+        }
         .card {
             background-color: white;
             padding: 20px;
@@ -15,8 +41,226 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             margin-bottom: 20px;
         }
+        /* 左プレビュー / 右フォーム（常時） */
+        .main-layout {
+            display: flex;
+            gap: 20px;
+            align-items: stretch;
+            justify-content: center;
+        }
         #preview-container {
-            display: none; /* Hide until a file is selected */
+            display: flex;
+            flex-direction: column;
+            flex: 0 0 auto;
+            width: fit-content;
+            max-width: 100%;
+            margin-bottom: 0;
+            box-sizing: border-box;
+        }
+        .preview-stage {
+            position: relative;
+            width: 640px;
+            height: 480px;
+            max-width: 100%;
+            aspect-ratio: 4 / 3;
+            background: #000;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        .preview-stage.is-empty {
+            background: #000;
+            box-shadow: inset 0 0 0 2px #495057;
+        }
+        .preview-stage.is-empty:hover {
+            box-shadow: inset 0 0 0 2px #007bff;
+            background: #0a0a0a;
+        }
+        @supports (aspect-ratio: 4 / 3) {
+            .preview-stage {
+                height: auto;
+            }
+        }
+        #preview-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: #000;
+            display: block;
+        }
+        .preview-placeholder {
+            position: absolute;
+            inset: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            color: #f8f9fa;
+            font-size: 16px;
+            font-weight: 600;
+            text-align: center;
+            padding: 24px;
+            border: 2px dashed #868e96;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.35);
+            cursor: pointer;
+            box-sizing: border-box;
+        }
+        .preview-placeholder:hover {
+            border-color: #74c0ff;
+            color: #fff;
+        }
+        .preview-placeholder-title {
+            font-size: 20px;
+            line-height: 1.3;
+        }
+        .preview-placeholder-sub {
+            font-size: 13px;
+            font-weight: 400;
+            color: #ced4da;
+        }
+        .preview-placeholder:hover .preview-placeholder-sub {
+            color: #e9ecef;
+        }
+        .preview-placeholder-btn {
+            margin-top: 4px;
+            padding: 10px 18px;
+            font-size: 15px;
+            font-weight: 600;
+            border: none;
+            border-radius: 6px;
+            background: #007bff;
+            color: #fff;
+            cursor: pointer;
+            pointer-events: none; /* 親クリックで統一 */
+        }
+        .preview-placeholder.hidden {
+            display: none;
+        }
+        .preview-controls.hidden {
+            display: none;
+        }
+        .preview-toolbar button:disabled,
+        #convert-button:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+        .file-select-group.is-pending .file-input-container {
+            outline: 2px solid #007bff;
+            outline-offset: 4px;
+            border-radius: 6px;
+        }
+        .file-select-group.is-pending #select-file-button {
+            background: #007bff;
+            font-weight: 600;
+        }
+        #preview-fs-root {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            min-width: 0;
+        }
+        #preview-fs-root:fullscreen,
+        #preview-fs-root:-webkit-full-screen {
+            box-sizing: border-box;
+            width: 100%;
+            height: 100%;
+            padding: 16px;
+            background: #111;
+            justify-content: center;
+        }
+        #preview-fs-root:fullscreen .preview-stage,
+        #preview-fs-root:-webkit-full-screen .preview-stage {
+            width: 100%;
+            max-width: none;
+            flex: 1 1 auto;
+            height: auto;
+            aspect-ratio: auto;
+            min-height: 0;
+        }
+        #preview-fs-root:fullscreen .preview-controls,
+        #preview-fs-root:-webkit-full-screen .preview-controls,
+        #preview-fs-root:fullscreen .preview-toolbar,
+        #preview-fs-root:-webkit-full-screen .preview-toolbar {
+            flex-shrink: 0;
+            background: #1a1a1a;
+            border-radius: 6px;
+            padding: 10px 12px;
+            margin-top: 10px;
+        }
+        #preview-fs-root:fullscreen .duration-display,
+        #preview-fs-root:-webkit-full-screen .duration-display {
+            color: #f1f3f5;
+            margin-top: 4px;
+        }
+        #preview-fs-root:fullscreen .preview-transport button,
+        #preview-fs-root:-webkit-full-screen .preview-transport button,
+        #preview-fs-root:fullscreen .playback-mode-toggle button,
+        #preview-fs-root:-webkit-full-screen .playback-mode-toggle button {
+            background: #2b2b2b;
+            color: #f1f3f5;
+            border-color: #555;
+        }
+        #preview-fs-root:fullscreen .playback-mode-toggle button.active,
+        #preview-fs-root:-webkit-full-screen .playback-mode-toggle button.active {
+            background: #007bff;
+            border-color: #007bff;
+            color: #fff;
+        }
+        #preview-fs-root:fullscreen .preview-transport button:hover,
+        #preview-fs-root:-webkit-full-screen .preview-transport button:hover,
+        #preview-fs-root:fullscreen .playback-mode-toggle button:hover:not(.active),
+        #preview-fs-root:-webkit-full-screen .playback-mode-toggle button:hover:not(.active) {
+            background: #3a3a3a;
+        }
+        .form-panel {
+            flex: 1 1 400px;
+            min-width: calc(320px * var(--form-scale));
+            max-width: 560px;
+            margin-bottom: 0;
+            box-sizing: border-box;
+            padding: calc(20px * var(--form-scale));
+            font-size: calc(16px * var(--form-scale));
+        }
+        .form-panel form {
+            display: flex;
+            flex-direction: column;
+            gap: calc(15px * var(--form-scale));
+        }
+        .form-panel .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .form-panel label {
+            margin-bottom: calc(5px * var(--form-scale));
+            font-weight: bold;
+            color: #495057;
+            font-size: calc(16px * var(--form-scale));
+        }
+        .form-panel input,
+        .form-panel button {
+            padding: calc(10px * var(--form-scale));
+            font-size: calc(16px * var(--form-scale));
+            border-radius: calc(4px * var(--form-scale));
+            border: 1px solid #ced4da;
+        }
+        .form-panel button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .form-panel button:hover {
+            background-color: #0056b3;
+        }
+        .form-panel .file-input-container {
+            display: flex;
+            gap: calc(10px * var(--form-scale));
+            align-items: center;
+        }
+        .form-panel hr {
+            margin: calc(20px * var(--form-scale)) 0;
         }
         form { display: flex; flex-direction: column; gap: 15px; }
         .form-group { display: flex; flex-direction: column; }
@@ -32,24 +276,107 @@
         #result img { max-width: 100%; border-radius: 4px; border: 1px solid #ddd; }
         #result a { display: inline-block; margin-top: 10px; padding: 8px 16px; background-color: #28a745; color: white; text-decoration: none; border-radius: 4px; }
         .privacy-note { text-align: center; font-size: 13px; color: #6c757d; margin-top: 5px; margin-bottom: 20px; }
+        #slider-wrap {
+            position: relative;
+            margin: 42px 10px 40px 10px;
+        }
         #slider-container {
-            margin: 30px 10px 30px 10px;
+            margin: 0;
         }
         /* Custom styles for noUiSlider */
         .noUi-connect { background: #007bff; }
-        .noUi-tooltip { font-size: 12px; padding: 2px 4px; }
-        /* スライダーハンドルの色分け */
+        /* 秒数はバー下へ（上の▼と干渉しない） */
+        .noUi-tooltip {
+            font-size: 12px;
+            padding: 2px 4px;
+            bottom: auto;
+            top: 120%;
+            pointer-events: none;
+        }
+        /* 範囲ハンドル: 開始(緑) / 終了(赤) ※再生位置は別レイヤ */
         .noUi-handle.noUi-handle-lower {
-            background: #28a745; /* 開始ハンドル (緑) */
+            background: #28a745;
             border: 1px solid #1f7a33;
             cursor: grab;
         }
         .noUi-handle.noUi-handle-upper {
-            background: #dc3545; /* 終了ハンドル (赤) */
+            background: #dc3545;
             border: 1px solid #a71d2a;
             cursor: grab;
         }
         .noUi-handle:focus { outline: none; }
+        /* 再生位置マーカー（スライダー外・独立。掴みは▼のみでバー上の緑赤を邪魔しない） */
+        .playhead-marker {
+            display: none;
+            position: absolute;
+            top: -20px;
+            left: 0;
+            width: 20px;
+            height: 14px;
+            margin-left: -10px;
+            /* 青バーより上、緑・赤より下 */
+            z-index: 5;
+            cursor: grab;
+            touch-action: none;
+            pointer-events: auto;
+            filter: drop-shadow(0 0 0.5px rgba(255,255,255,0.5));
+        }
+        .playhead-marker.visible {
+            display: block;
+        }
+        .playhead-marker::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 20px;
+            height: 14px;
+            background: #212529;
+            clip-path: polygon(0 0, 100% 0, 50% 100%);
+        }
+        .playhead-marker::after {
+            content: "";
+            position: absolute;
+            top: 14px;
+            left: 50%;
+            width: 2px;
+            height: 34px;
+            margin-left: -1px;
+            background: #212529;
+            box-shadow:
+                -1px 0 0 rgba(255, 255, 255, 0.4),
+                1px 0 0 rgba(255, 255, 255, 0.4);
+            pointer-events: none;
+        }
+        /* 全画面時はもう一段はっきり */
+        #preview-fs-root:fullscreen .playhead-marker,
+        #preview-fs-root:-webkit-full-screen .playhead-marker {
+            filter: drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 1.5px #fff) drop-shadow(0 1px 2px rgba(255, 255, 255, 0.55));
+        }
+        #preview-fs-root:fullscreen .playhead-marker::before,
+        #preview-fs-root:-webkit-full-screen .playhead-marker::before,
+        #preview-fs-root:fullscreen .playhead-marker::after,
+        #preview-fs-root:-webkit-full-screen .playhead-marker::after {
+            background: #111;
+        }
+        #preview-fs-root:fullscreen .playhead-marker::after,
+        #preview-fs-root:-webkit-full-screen .playhead-marker::after {
+            width: 2px;
+            margin-left: -1px;
+            background: rgba(17, 17, 17, 0.75);  /* 本体も少し透ける */
+            box-shadow:
+                -1px 0 0 rgba(255, 255, 255, 0.12),
+                1px 0 0 rgba(255, 255, 255, 0.12);
+        }
+        /* 積層: 青バー < ▼縦線 < 緑・赤 */
+        #slider-container .noUi-connects,
+        #slider-container .noUi-connect {
+            z-index: 1;
+        }
+        #slider-container .noUi-origin,
+        #slider-container .noUi-handle {
+            z-index: 7;
+        }
         /* 追加: ファイル/フォルダ選択UIのスタイル */
         .file-input-container { display: flex; gap: 10px; align-items: center; }
         .file-input-container input[type="text"] { flex-grow: 1; }
@@ -62,21 +389,107 @@
             font-weight: bold;
             color: #343a40;
         }
+        .preview-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .preview-transport {
+            display: flex;
+            gap: 8px;
+        }
+        .preview-transport button {
+            padding: 8px 16px;
+            font-size: 14px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            background: #fff;
+            color: #495057;
+            cursor: pointer;
+        }
+        .preview-transport button:hover {
+            background: #e9ecef;
+        }
+        .playback-mode-toggle {
+            display: flex;
+            justify-content: center;
+            gap: 0;
+        }
+        .playback-mode-toggle button {
+            padding: 8px 16px;
+            font-size: 14px;
+            border: 1px solid #ced4da;
+            background: #fff;
+            color: #495057;
+            cursor: pointer;
+        }
+        .playback-mode-toggle button:first-child {
+            border-radius: 4px 0 0 4px;
+        }
+        .playback-mode-toggle button:last-child {
+            border-radius: 0 4px 4px 0;
+            border-left: none;
+        }
+        .playback-mode-toggle button.active {
+            background: #007bff;
+            color: #fff;
+            border-color: #007bff;
+        }
+        .playback-mode-toggle button:hover:not(.active) {
+            background: #e9ecef;
+        }
+        @media (max-width: 900px) {
+            .main-layout {
+                flex-direction: column;
+            }
+            .form-panel {
+                max-width: none;
+                width: 100%;
+            }
+        }
     </style>
 </head>
 <body>
-    <h1>MP4 to GIF Converter</h1>
+    <h1>MP4 to GIF Converter 2</h1>
 
+    <div class="main-layout" id="main-layout">
     <div id="preview-container" class="card">
         <h3>プレビュー &amp; 範囲選択</h3>
-        <video id="video-preview" controls width="100%" muted></video>
-        <div id="duration-display" class="duration-display"></div>
-        <div id="slider-container"></div>
+        <div id="preview-fs-root">
+            <div class="preview-stage is-empty" id="preview-stage">
+                <video id="video-preview" muted></video>
+                <div id="preview-placeholder" class="preview-placeholder" role="button" tabindex="0" aria-label="MP4ファイルを選択">
+                    <div class="preview-placeholder-title">MP4を選択</div>
+                    <div class="preview-placeholder-sub">ここをクリックしてファイルを選べます</div>
+                    <span class="preview-placeholder-btn">ファイルを選択...</span>
+                </div>
+            </div>
+            <div id="preview-controls" class="preview-controls hidden">
+                <div id="duration-display" class="duration-display"></div>
+                <div id="slider-wrap">
+                    <div id="slider-container"></div>
+                    <div id="playhead-marker" class="playhead-marker" role="slider" aria-label="再生位置"></div>
+                </div>
+            </div>
+            <div class="preview-toolbar">
+                <div class="preview-transport" role="group" aria-label="プレビュー操作">
+                    <button type="button" id="preview-play-pause">再生▶️</button>
+                    <button type="button" id="preview-fullscreen">全画面🖥️</button>
+                </div>
+                <div class="playback-mode-toggle" role="group" aria-label="プレビュー再生モード">
+                    <button type="button" id="playback-mode-loop" data-mode="loop">リピート🔁</button>
+                    <button type="button" id="playback-mode-once" class="active" data-mode="once">1回再生➡️</button>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="card">
+    <div class="card form-panel">
         <form id="upload-form">
-            <div class="form-group">
+            <div class="form-group file-select-group is-pending" id="file-select-group">
                 <label>1. MP4 ファイルを選択:</label>
                 <div class="file-input-container">
                     <input type="text" id="selected-file-path" placeholder="ファイルが選択されていません" readonly>
@@ -117,11 +530,12 @@
                 <input type="checkbox" id="high_quality" name="high_quality" value="true" style="width: auto;">
                 <label for="high_quality" style="margin-bottom: 0;">高品質モード (色を綺麗に、ファイルサイズを最適化)</label>
             </div>
-            <button type="submit">GIFに変換</button>
+            <button type="submit" id="convert-button" disabled>GIFに変換</button>
         </form>
     </div>
+    </div>
     <p class="privacy-note">
-        🔒 アップロードされたファイルは、変換とダウンロードが完了した後にサーバーから自動的に削除されます。
+        <!-- 🔒 アップロードされたファイルは、変換とダウンロードが完了した後にサーバーから自動的に削除されます。 -->
     </p>
     <div id="status"></div>
     <div id="progress-container" style="display: none; margin-top: 10px;">
@@ -145,11 +559,14 @@
         const fileInput = document.getElementById('file');
         const startTimeInput = document.getElementById('start_time');
         const endTimeInput = document.getElementById('end_time');
-        const previewContainer = document.getElementById('preview-container');
         const videoPreview = document.getElementById('video-preview');
+        const previewPlaceholder = document.getElementById('preview-placeholder');
+        const previewControls = document.getElementById('preview-controls');
         const sliderContainer = document.getElementById('slider-container');
+        const sliderWrap = document.getElementById('slider-wrap');
+        const playheadMarker = document.getElementById('playhead-marker');
         let rangeSlider = null; // スライダーのインスタンスを保持
-        const durationDisplay = document.getElementById('duration-display'); // ★★★ 追加 ★★★
+        const durationDisplay = document.getElementById('duration-display');
 
         // --- ステップAで追加したUI要素 ---
         const selectFileButton = document.getElementById('select-file-button');
@@ -160,16 +577,148 @@
 
         let currentVideoDuration = 0; // 動画の長さを保持
         let isSliderSetup = false; // スライダーがセットアップ済みかどうかのフラグ
+        let savedPreviewPlaybackMode = 'once'; // 起動時に読み込んだ再生モード
+        let isPlayheadDragging = false;
+        let isRangeDragging = false;
 
-        // --- ステップC: 最後に使用した保存先を読み込む ---
+        const playPauseBtn = document.getElementById('preview-play-pause');
+        const fullscreenBtn = document.getElementById('preview-fullscreen');
+        const previewFsRoot = document.getElementById('preview-fs-root');
+        const previewStage = document.getElementById('preview-stage');
+        const fileSelectGroup = document.getElementById('file-select-group');
+        const convertButton = document.getElementById('convert-button');
+        const playbackModeLoopBtn = document.getElementById('playback-mode-loop');
+        const playbackModeOnceBtn = document.getElementById('playback-mode-once');
+
+        let hasMediaReady = false;
+
+        function setMediaReadyState(ready) {
+            hasMediaReady = !!ready;
+            playPauseBtn.disabled = !hasMediaReady;
+            fullscreenBtn.disabled = !hasMediaReady;
+            playbackModeLoopBtn.disabled = !hasMediaReady;
+            playbackModeOnceBtn.disabled = !hasMediaReady;
+            convertButton.disabled = !hasMediaReady;
+            previewStage.classList.toggle('is-empty', !hasMediaReady);
+            fileSelectGroup.classList.toggle('is-pending', !hasMediaReady);
+            if (!hasMediaReady) {
+                playPauseBtn.textContent = '再生▶️';
+                playheadMarker.classList.remove('visible');
+            }
+        }
+
+        setMediaReadyState(false);
+
+        function updatePlayPauseButton() {
+            playPauseBtn.textContent = videoPreview.paused ? '再生▶️' : '一時停止⏸️';
+        }
+
+        function getFullscreenElement() {
+            return document.fullscreenElement
+                || document.webkitFullscreenElement
+                || null;
+        }
+
+        function updateFullscreenButton() {
+            const isFs = !!getFullscreenElement();
+            fullscreenBtn.textContent = isFs ? '全画面解除' : '全画面🖥️';
+        }
+
+        async function enterFullscreen() {
+            if (previewFsRoot.requestFullscreen) {
+                await previewFsRoot.requestFullscreen();
+            } else if (previewFsRoot.webkitRequestFullscreen) {
+                await previewFsRoot.webkitRequestFullscreen();
+            }
+        }
+
+        async function exitFullscreen() {
+            if (document.exitFullscreen) {
+                await document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                await document.webkitExitFullscreen();
+            }
+        }
+
+        async function toggleFullscreen() {
+            try {
+                if (!getFullscreenElement()) {
+                    await enterFullscreen();
+                } else {
+                    await exitFullscreen();
+                }
+            } catch (e) {
+                console.error('Fullscreen failed:', e);
+            }
+        }
+
+        playPauseBtn.addEventListener('click', () => {
+            if (!videoPreview.src) return;
+            if (videoPreview.paused) {
+                videoPreview.play().catch((e) => console.error('Play failed:', e));
+            } else {
+                videoPreview.pause();
+            }
+        });
+
+        fullscreenBtn.addEventListener('click', toggleFullscreen);
+
+        document.addEventListener('fullscreenchange', updateFullscreenButton);
+        document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && getFullscreenElement()) {
+                exitFullscreen().catch(() => {});
+            }
+        });
+
+        videoPreview.addEventListener('play', updatePlayPauseButton);
+        videoPreview.addEventListener('pause', updatePlayPauseButton);
+        videoPreview.addEventListener('ended', updatePlayPauseButton);
+
+        // --- ステップC: 最後に使用した保存先・変換設定を読み込む ---
         try {
             const lastOutputDir = await window.pywebview.api.get_last_output_dir();
             if (lastOutputDir) {
                 outputDirInput.value = lastOutputDir;
             }
+
+            const settings = await window.pywebview.api.get_conversion_settings();
+            if (settings) {
+                if (settings.fps != null) {
+                    document.getElementById('fps').value = settings.fps;
+                }
+                if (settings.width != null) {
+                    document.getElementById('width').value = settings.width;
+                }
+                document.getElementById('high_quality').checked = !!settings.high_quality;
+                if (settings.preview_playback_mode === 'loop' || settings.preview_playback_mode === 'once') {
+                    savedPreviewPlaybackMode = settings.preview_playback_mode;
+                }
+            }
         } catch (e) {
-            console.error("Could not load last used paths:", e);
+            console.error("Could not load last used paths/settings:", e);
         }
+
+        // 変換設定は変更時にすぐ保存する
+        const fpsInput = document.getElementById('fps');
+        const widthInput = document.getElementById('width');
+        const highQualityInput = document.getElementById('high_quality');
+
+        async function saveConversionSettingsNow() {
+            try {
+                await window.pywebview.api.save_conversion_settings(
+                    fpsInput.value,
+                    widthInput.value,
+                    highQualityInput.checked
+                );
+            } catch (e) {
+                console.error("Could not save conversion settings:", e);
+            }
+        }
+
+        fpsInput.addEventListener('change', saveConversionSettingsNow);
+        widthInput.addEventListener('change', saveConversionSettingsNow);
+        highQualityInput.addEventListener('change', saveConversionSettingsNow);
 
         /**
          * ★★★ 追加: 選択された時間の長さを計算して表示を更新する関数 ★★★
@@ -190,29 +739,156 @@
                 durationDisplay.textContent = '選択範囲: 0.00秒';
             }
         }
+
+        /** スライダー上の選択範囲 (開始秒, 終了秒) を返す */
+        function getSelectionRange() {
+            if (!rangeSlider) return null;
+            const values = rangeSlider.get().map(v => parseFloat(v));
+            return { start: values[0], end: values[1] };
+        }
+
+        function timeToPlayheadPercent(timeSec) {
+            if (!currentVideoDuration) return 0;
+            return (Math.min(Math.max(timeSec, 0), currentVideoDuration) / currentVideoDuration) * 100;
+        }
+
+        function clientXToTime(clientX) {
+            const rect = sliderContainer.getBoundingClientRect();
+            if (rect.width <= 0 || !currentVideoDuration) return 0;
+            const ratio = Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1);
+            return ratio * currentVideoDuration;
+        }
+
+        function updatePlayheadMarker(timeSec = videoPreview.currentTime) {
+            if (!playheadMarker || !currentVideoDuration) return;
+            playheadMarker.style.left = `${timeToPlayheadPercent(timeSec)}%`;
+            playheadMarker.classList.add('visible');
+        }
+
+        function seekToTime(timeSec, clampToRange = true) {
+            let t = timeSec;
+            if (clampToRange) {
+                const range = getSelectionRange();
+                if (range) {
+                    t = Math.min(Math.max(t, range.start), range.end);
+                }
+            }
+            t = Math.min(Math.max(t, 0), currentVideoDuration || t);
+            videoPreview.currentTime = t;
+            updatePlayheadMarker(t);
+        }
+
+        function syncPlayheadFromVideo() {
+            if (isPlayheadDragging || isRangeDragging) return;
+            updatePlayheadMarker(videoPreview.currentTime);
+        }
+
+        function bindPlayheadMarkerDrag() {
+            if (!playheadMarker || playheadMarker.dataset.bound === '1') return;
+            playheadMarker.dataset.bound = '1';
+
+            const onMove = (clientX) => {
+                seekToTime(clientXToTime(clientX), true);
+            };
+
+            const onPointerUp = (e) => {
+                isPlayheadDragging = false;
+                playheadMarker.releasePointerCapture?.(e.pointerId);
+                window.removeEventListener('pointermove', onPointerMove);
+                window.removeEventListener('pointerup', onPointerUp);
+                window.removeEventListener('pointercancel', onPointerUp);
+            };
+
+            const onPointerMove = (e) => {
+                if (!isPlayheadDragging) return;
+                onMove(e.clientX);
+            };
+
+            playheadMarker.addEventListener('pointerdown', (e) => {
+                if (!rangeSlider || !currentVideoDuration) return;
+                e.preventDefault();
+                e.stopPropagation();
+                isPlayheadDragging = true;
+                playheadMarker.setPointerCapture?.(e.pointerId);
+                onMove(e.clientX);
+                window.addEventListener('pointermove', onPointerMove);
+                window.addEventListener('pointerup', onPointerUp);
+                window.addEventListener('pointercancel', onPointerUp);
+            });
+        }
+
+        // プレビュー再生モード: 'loop' | 'once'（既定は1回再生）
+        let previewPlaybackMode = 'once';
+
+        function setPreviewPlaybackMode(mode, persist = true) {
+            previewPlaybackMode = mode === 'loop' ? 'loop' : 'once';
+            playbackModeLoopBtn.classList.toggle('active', previewPlaybackMode === 'loop');
+            playbackModeOnceBtn.classList.toggle('active', previewPlaybackMode === 'once');
+            if (persist) {
+                window.pywebview.api.save_preview_playback_mode(previewPlaybackMode).catch((e) => {
+                    console.error("Could not save preview playback mode:", e);
+                });
+            }
+        }
+
+        setPreviewPlaybackMode(savedPreviewPlaybackMode, false);
+        playbackModeLoopBtn.addEventListener('click', () => setPreviewPlaybackMode('loop'));
+        playbackModeOnceBtn.addEventListener('click', () => setPreviewPlaybackMode('once'));
+
+        // 入力欄 → スライダー（セットアップのたびに二重登録しないよう外側で一度だけ）
+        startTimeInput.addEventListener('change', function() {
+            if (!rangeSlider) return;
+            const values = rangeSlider.get().map(v => parseFloat(v));
+            let start = parseFloat(this.value);
+            let end = values[1];
+            if (isNaN(start)) return;
+            start = Math.max(0, Math.min(start, end));
+            rangeSlider.set([start, end]);
+            if (videoPreview.currentTime < start) {
+                seekToTime(start, false);
+            } else {
+                updatePlayheadMarker();
+            }
+            updateDurationDisplay();
+        });
+
+        endTimeInput.addEventListener('change', function() {
+            if (!rangeSlider) return;
+            const values = rangeSlider.get().map(v => parseFloat(v));
+            let start = values[0];
+            let end = this.value === '' ? currentVideoDuration : parseFloat(this.value);
+            if (isNaN(end)) return;
+            end = Math.max(start, Math.min(end, currentVideoDuration));
+            rangeSlider.set([start, end]);
+            if (videoPreview.currentTime > end) {
+                seekToTime(end, false);
+            } else {
+                updatePlayheadMarker();
+            }
+            updateDurationDisplay();
+        });
+
         /**
          * スライダーと関連イベントをセットアップする関数
          */
         function setupSliderAndEvents() {
             const duration = videoPreview.duration;
             if (!duration || !isFinite(duration)) {
-                // durationが不正な場合は何もしない
                 console.error("Invalid video duration:", duration);
                 return;
             }
             currentVideoDuration = duration;
 
-            // 既にスライダーが存在する場合は破棄
             if (rangeSlider) {
                 rangeSlider.destroy();
+                rangeSlider = null;
             }
 
-            // 入力欄を初期化
             startTimeInput.value = "0.00";
-            endTimeInput.value = ""; // 最後までなので空にする
+            endTimeInput.value = "";
             endTimeInput.placeholder = `動画の最後まで (${duration.toFixed(2)}s)`;
 
-            // スライダーを生成
+            // ハンドルは開始 / 終了のみ。再生位置は独立マーカー
             rangeSlider = noUiSlider.create(sliderContainer, {
                 start: [0, duration],
                 connect: true,
@@ -223,8 +899,26 @@
                 ]
             });
 
-            // --- スライダーと入力欄の双方向連携 ---
-            rangeSlider.on('update', (values, handle) => {
+            bindPlayheadMarkerDrag();
+            seekToTime(0, false);
+
+            let frozenPlayheadTime = 0;
+
+            rangeSlider.on('start', () => {
+                isRangeDragging = true;
+                frozenPlayheadTime = videoPreview.currentTime;
+            });
+
+            rangeSlider.on('end', (values) => {
+                isRangeDragging = false;
+                const start = parseFloat(values[0]);
+                const end = parseFloat(values[1]);
+                const markerTime = Math.min(Math.max(frozenPlayheadTime, start), end);
+                videoPreview.currentTime = markerTime;
+                updatePlayheadMarker(markerTime);
+            });
+
+            rangeSlider.on('update', (values) => {
                 const startTime = parseFloat(values[0]);
                 const endTime = parseFloat(values[1]);
 
@@ -234,68 +928,89 @@
                 } else {
                     endTimeInput.value = endTime.toFixed(2);
                 }
-                // ★★★ 追加: スライダー更新時に選択時間を表示 ★★★
                 updateDurationDisplay();
             });
 
-            // --- スライダーと動画プレビューの連携 ---
             rangeSlider.on('slide', (values, handle) => {
-                videoPreview.currentTime = parseFloat(values[handle]);
+                const start = parseFloat(values[0]);
+                const end = parseFloat(values[1]);
+                // カット位置プレビュー（▼マーカーは追従させない）
+                videoPreview.currentTime = handle === 0 ? start : end;
+                const markerTime = Math.min(Math.max(frozenPlayheadTime, start), end);
+                updatePlayheadMarker(markerTime);
             });
 
-            // --- 入力欄からスライダーへの連携 ---
-            startTimeInput.addEventListener('change', function() {
-                rangeSlider.set([this.value, null]);
-                // ★★★ 追加: 入力欄変更時に選択時間を表示 ★★★
-                updateDurationDisplay();
-            });
-
-            endTimeInput.addEventListener('change', function() {
-                rangeSlider.set([null, this.value === '' ? currentVideoDuration : this.value]);
-                // ★★★ 追加: 入力欄変更時に選択時間を表示 ★★★
-                updateDurationDisplay();
-            });
-
-            // ★★★ 追加: スライダーセットアップ時に初期表示 ★★★
             updateDurationDisplay();
+            updatePlayPauseButton();
+            previewPlaceholder.classList.add('hidden');
+            previewControls.classList.remove('hidden');
+            setMediaReadyState(true);
         }
 
-        // ★★★ 修正計画案 ステップ2 ★★★
-        // 'loadedmetadata' イベントは、動画のメタデータ（長さ、サイズなど）が
-        // 読み込まれたときに発生します。これはスライダーを初期化するのに最も確実なタイミングです。
+        // 'loadedmetadata' でスライダーを初期化
         videoPreview.addEventListener('loadedmetadata', () => {
-            // isSliderSetup フラグは、新しいファイルが選択されるたびにリセットされます。
-            // これにより、動画ごとにスライダーが一度だけ作成されることを保証します。
             if (!isSliderSetup) {
                 isSliderSetup = true;
                 setupSliderAndEvents();
             }
         });
 
-        // --- ステップB-1: UIイベントリスナーの変更 ---
-        // 「ファイルを選択...」ボタンがクリックされたら、PythonのAPIを呼び出す
-        selectFileButton.addEventListener('click', async () => {
-            // pywebviewのAPIを呼び出してファイル選択ダイアログを開く
-            const filePath = await window.pywebview.api.select_file();
-            if (filePath) {
-                selectedFilePathInput.value = filePath;
+        // --- プレビュー再生を選択範囲に合わせる ---
+        videoPreview.addEventListener('play', () => {
+            const range = getSelectionRange();
+            if (!range) return;
+            if (videoPreview.currentTime < range.start || videoPreview.currentTime >= range.end - 0.05) {
+                videoPreview.currentTime = range.start;
+            }
+        });
 
-                // ファイル名部分を取得
-                const fileName = filePath.split(/[\\/]/).pop();
-                // 保存ファイル名を自動生成
-                const lastDotIndex = fileName.lastIndexOf('.');
-                const baseName = (lastDotIndex === -1) ? fileName : fileName.substring(0, lastDotIndex);
-                outputFilenameInput.value = `${baseName}.gif`;
+        videoPreview.addEventListener('timeupdate', () => {
+            const range = getSelectionRange();
+            if (!range) return;
 
-                // プレビュー表示
-                isSliderSetup = false;
-                // 以前のプレビューが createObjectURL で作られたものであれば解放する
-                if (videoPreview.src && videoPreview.src.startsWith('blob:')) {
-                    URL.revokeObjectURL(videoPreview.src);
+            if (!videoPreview.paused) {
+                if (videoPreview.currentTime < range.start) {
+                    videoPreview.currentTime = range.start;
+                } else if (videoPreview.currentTime >= range.end) {
+                    if (previewPlaybackMode === 'loop') {
+                        videoPreview.currentTime = range.start;
+                    } else {
+                        videoPreview.pause();
+                        videoPreview.currentTime = range.start;
+                    }
                 }
-                // ローカルファイルパスを直接使わず、サーバーエンドポイント経由で読み込む
-                videoPreview.src = `/load-video?path=${encodeURIComponent(filePath)}`;
-                previewContainer.style.display = 'block';
+            }
+
+            syncPlayheadFromVideo();
+        });
+        // --- ステップB-1: UIイベントリスナーの変更 ---
+        async function openFilePicker() {
+            const filePath = await window.pywebview.api.select_file();
+            if (!filePath) return;
+
+            selectedFilePathInput.value = filePath;
+
+            const fileName = filePath.split(/[\\/]/).pop();
+            const lastDotIndex = fileName.lastIndexOf('.');
+            const baseName = (lastDotIndex === -1) ? fileName : fileName.substring(0, lastDotIndex);
+            outputFilenameInput.value = `${baseName}.gif`;
+
+            isSliderSetup = false;
+            setMediaReadyState(false);
+            previewPlaceholder.classList.remove('hidden');
+            previewControls.classList.add('hidden');
+            if (videoPreview.src && videoPreview.src.startsWith('blob:')) {
+                URL.revokeObjectURL(videoPreview.src);
+            }
+            videoPreview.src = `/load-video?path=${encodeURIComponent(filePath)}`;
+        }
+
+        selectFileButton.addEventListener('click', openFilePicker);
+        previewPlaceholder.addEventListener('click', openFilePicker);
+        previewPlaceholder.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                openFilePicker();
             }
         });
 

@@ -32,49 +32,29 @@ def get_resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 # Flaskアプリのインスタンス化。テンプレートと静的ファイルのパスを明示的に指定します。
+# FFmpegのパスはエントリーポイントであるmain.pyで設定します。
 template_folder = get_resource_path('templates')
 static_folder = get_resource_path('static')
 app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
-# Flaskのデフォルトロガーを無効にし、独自設定のロガーに統一する
-app.logger.disabled = True
-log = logging.getLogger('werkzeug')
-log.disabled = True
+# FlaskとWerkzeugのデフォルトロガーを無効にし、main.pyで設定されたロガーに統一する
+app.logger.disabled = True 
+log = logging.getLogger('werkzeug') 
+log.disabled = True 
 app.config['IS_DESKTOP_APP'] = False # デフォルトはWebアプリモード
 
-# --- 設定 ---
-# PyInstallerでバンドルされているかどうかでFFmpeg/FFprobeのパスを切り替える
-if getattr(sys, 'frozen', False):
-    ffmpeg_binary = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
-    ffprobe_binary = "ffprobe.exe" if sys.platform == "win32" else "ffprobe"
-    FFMPEG_PATH = get_resource_path(f"bin/{ffmpeg_binary}")
-    FFPROBE_PATH = get_resource_path(f"bin/{ffprobe_binary}")
-else:
-    FFMPEG_PATH = os.environ.get("FFMPEG_PATH", "ffmpeg")
-    FFPROBE_PATH = os.environ.get("FFPROBE_PATH", "ffprobe")
+# --- アプリケーションデータフォルダの設定 ---
+# Program Filesなどの書き込み禁止領域にインストールされた場合でも
+# アプリが正常に動作できるよう、ユーザーのAppDataフォルダにデータ（一時ファイルなど）を保存します。
+APP_NAME = "MP4-to-GIF-Converter"
+# C:\Users\<ユーザー名>\AppData\Local
+base_data_dir = os.getenv('LOCALAPPDATA')
+if not base_data_dir:
+    # LOCALAPPDATAが取得できない場合のフォールバック
+    base_data_dir = os.path.expanduser('~')
+app_data_dir = os.path.join(base_data_dir, APP_NAME)
 
-# 実行ファイルの存在チェック
-if (not os.path.exists(FFMPEG_PATH) and shutil.which(FFMPEG_PATH) is None) or \
-   (not os.path.exists(FFPROBE_PATH) and shutil.which(FFPROBE_PATH) is None):
-    error_msg = f"CRITICAL ERROR: FFmpeg or FFprobe not found. Path: FFMPEG='{FFMPEG_PATH}', FFPROBE='{FFPROBE_PATH}'"
-    # ユーザーに見えるようにコンソールには必ず出力
-    print(error_msg, file=sys.stderr)
-    # ベストエフォートでログファイルにも書き込む
-    # この時点ではmain.pyのロガー設定が完了していないため、手動で書き込む
-    try:
-        APP_NAME = "MP4toGIFConverter"
-        APP_DATA_DIR = Path.home() / f".{APP_NAME.lower()}"
-        APP_DATA_DIR.mkdir(exist_ok=True)
-        LOG_FILE = APP_DATA_DIR / 'critical_errors.log'
-        with open(LOG_FILE, 'a', encoding='utf-8') as f:
-            f.write(f"[{datetime.now().isoformat()}] {error_msg}\n")
-    except Exception:
-        # ログ書き込みに失敗してもプログラムの終了は妨げない
-        pass
-    sys.exit(1)
-
-
-UPLOAD_FOLDER = 'uploads'
-OUTPUT_FOLDER = 'outputs'
+UPLOAD_FOLDER = os.path.join(app_data_dir, 'uploads')
+OUTPUT_FOLDER = os.path.join(app_data_dir, 'outputs')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['OUTPUT_FOLDER'] = OUTPUT_FOLDER
 
@@ -83,6 +63,9 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 # タスクの状態を保存するためのインメモリ辞書 (ローカル版の簡易DB)
 tasks_db = {}
+
+# tasks_dbへのアクセスをスレッドセーフにするためのロック
+tasks_db_lock = threading.Lock()
 
 # このモジュール用のロガーインスタンスを取得
 logger = logging.getLogger(__name__)
@@ -104,8 +87,12 @@ def sanitize_filename(filename: str) -> str:
         return f"converted_{uuid.uuid4().hex[:8]}"
     return sanitized
 
-def get_video_duration(ffprobe_path: str, video_path: str) -> float | None:
+def get_video_duration(ffprobe_path: str = None, video_path: str = None) -> float | None:
     """ffprobeを使って動画の長さを秒単位で取得する。"""
+    # ffprobe_pathが未指定ならFlaskアプリのconfigから取得
+    if ffprobe_path is None:
+        from flask import current_app
+        ffprobe_path = current_app.config.get('FFPROBE_PATH')
     command = [
         ffprobe_path, '-v', 'error', '-show_entries', 'format=duration',
         '-of', 'default=noprint_wrappers=1:nokey=1', video_path
@@ -139,13 +126,6 @@ def conversion_worker_thread(task_id: str, job: ConversionJob):
     """
     変換処理をバックグラウンドのスレッドで実行し、辞書の状態を更新する。
     """
-    input_path = job.input_path
-    
-    # 進捗を辞書に書き込むためのコールバック関数を定義
-    def progress_callback(progress, step):
-        if task_id in tasks_db:
-            tasks_db[task_id].update({'progress': progress, 'step': step})
-    
     # --- FFmpegコマンドの組み立て ---
     # 外部ライブラリに依存せず、直接コマンドを生成することでエラーハンドリングを堅牢にします。
     command = [
@@ -179,9 +159,10 @@ def conversion_worker_thread(task_id: str, job: ConversionJob):
             creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0 # Windowsでコンソール非表示
         )
         # 成功したら状態を更新
-        tasks_db[task_id]['state'] = 'SUCCESS'
-        tasks_db[task_id]['output_path'] = job.output_path
-        logger.info(f"Task {task_id} completed successfully. Output: {job.output_path}")
+        with tasks_db_lock:
+            tasks_db[task_id]['state'] = 'SUCCESS'
+            tasks_db[task_id]['output_path'] = job.output_path
+            logger.info(f"Task {task_id} completed successfully. Output: {job.output_path}")
     except subprocess.CalledProcessError as e:
         # FFmpegが0以外の終了コードを返して失敗した場合の特別な処理
         error_message_for_ui = "変換エラー (FFmpeg)。詳細はログファイルを確認してください。"
@@ -194,8 +175,9 @@ def conversion_worker_thread(task_id: str, job: ConversionJob):
             f"FFmpeg Command: {' '.join(map(str, e.cmd))}\n"
             f"FFmpeg stderr:\n{ffmpeg_error_output}"
         )
-        tasks_db[task_id]['state'] = 'FAILURE'
-        tasks_db[task_id]['error'] = error_message_for_ui
+        with tasks_db_lock:
+            tasks_db[task_id]['state'] = 'FAILURE'
+            tasks_db[task_id]['error'] = error_message_for_ui
     except Exception as e:
         # FFmpeg以外の予期せぬエラーが発生した場合
         # UIにはエラーの種別がわかる程度のメッセージを表示
@@ -206,15 +188,16 @@ def conversion_worker_thread(task_id: str, job: ConversionJob):
             f"Conversion failed for task {task_id}. Input: {job.input_path}",
             exc_info=True  # この引数がスタックトレースをログに追加する
         )
-        tasks_db[task_id]['state'] = 'FAILURE'
-        tasks_db[task_id]['error'] = error_message_for_ui
+        with tasks_db_lock:
+            tasks_db[task_id]['state'] = 'FAILURE'
+            tasks_db[task_id]['error'] = error_message_for_ui
     finally:
         # 変換が成功しても失敗しても、入力ファイルを削除する
         try:
-            if os.path.exists(input_path):
-                os.remove(input_path)
+            if os.path.exists(job.input_path):
+                os.remove(job.input_path)
         except OSError as e:
-            logger.warning(f"Could not clean up input file {input_path}: {e}")
+            logger.warning(f"Could not clean up input file {job.input_path}: {e}")
 
 @app.route('/')
 def index():
@@ -226,8 +209,19 @@ def licenses():
 
 @app.route('/favicon.ico')
 def favicon():
-    # ブラウザが自動的にリクエストするfavicon.icoに対して、
-    # 「コンテンツなし」を返すことで404エラーを防ぎます。
+    # プロジェクトルート / バンドル内の app_icon.ico があれば返す
+    candidates = []
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        candidates.append(Path(sys._MEIPASS) / 'app_icon.ico')
+        candidates.append(Path(sys.executable).resolve().parent / 'app_icon.ico')
+    else:
+        candidates.append(Path(__file__).resolve().parent.parent / 'app_icon.ico')
+
+    for icon_path in candidates:
+        if icon_path.is_file():
+            return send_file(icon_path, mimetype='image/x-icon')
+
+    # 見つからない場合は 204 で 404 を防ぐ
     return '', 204
 
 @app.route('/load-video')
@@ -283,10 +277,10 @@ def start_conversion_task():
     if not original_input_path or not os.path.exists(original_input_path):
         return jsonify({"error": "Input file not found or path not provided"}), 400
 
-    original_filename = os.path.basename(original_input_path)
+    original_input_p = Path(original_input_path)
 
     try:
-        start_time = float(data.get('start_time', 0))
+        start_time = float(data.get('start_time', 0.0))
         end_time_str = data.get('end_time')
         end_time = float(end_time_str) if end_time_str and end_time_str.strip() else None
         fps = int(data.get('fps', 15))
@@ -299,27 +293,44 @@ def start_conversion_task():
 
     task_id = str(uuid.uuid4())
     
-    # 元のファイルを直接使わず、安全な場所にコピーして処理する
-    _, extension = os.path.splitext(original_filename)
-    input_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{task_id}{extension}")
-    shutil.copy(original_input_path, input_path)
+    # 元のファイルを直接使わず、安全な場所にコピーして処理する (pathlibを使用)
+    upload_dir = Path(app.config['UPLOAD_FOLDER'])
+    try:
+        input_path_p = upload_dir / f"{task_id}{original_input_p.suffix}"
+        shutil.copy(original_input_p, input_path_p)
+    except (IOError, OSError) as e:
+        # ファイルコピーの失敗は致命的なので、ここでエラーを返す
+        logger.error(f"Failed to copy input file from '{original_input_path}' to '{input_path_p}': {e}", exc_info=True)
+        return jsonify({"error": f"Could not process input file: {e}"}), 500
 
-    # 保存先フォルダを決定
-    save_dir = output_dir_from_form if output_dir_from_form and output_dir_from_form.strip() else app.config['OUTPUT_FOLDER']
-    os.makedirs(save_dir, exist_ok=True)
+    input_path = str(input_path_p) # ワーカースレッドに渡すため文字列に変換
 
-    # 保存ファイル名を決定
+    # 保存先フォルダを決定 (pathlibを使用)
+    save_dir_str = output_dir_from_form if output_dir_from_form and output_dir_from_form.strip() else app.config['OUTPUT_FOLDER']
+    save_dir_p = Path(save_dir_str)
+    save_dir_p.mkdir(parents=True, exist_ok=True)
+
+    # 保存ファイル名を決定 (pathlibを使用)
     if output_filename_from_form and output_filename_from_form.strip():
         final_filename = sanitize_filename(output_filename_from_form)
-    elif original_filename:
-        base, _ = os.path.splitext(original_filename)
-        final_filename = sanitize_filename(f"{base}.gif")
+    elif original_input_p.name:
+        # .stemで拡張子なしのファイル名を取得
+        final_filename = sanitize_filename(f"{original_input_p.stem}.gif")
     else:
         final_filename = f"{task_id}.gif"
-    output_path = os.path.join(save_dir, final_filename)
+    
+    output_path_p = save_dir_p / final_filename
+    output_path = str(output_path_p) # ワーカースレッドに渡すため文字列に変換
+
+    # main.pyで設定されたFFmpeg/FFprobeのパスをFlaskのconfigから取得
+    ffmpeg_path = app.config.get('FFMPEG_PATH')
+    ffprobe_path = app.config.get('FFPROBE_PATH')
+    if not ffmpeg_path or not ffprobe_path:
+        logger.critical("FFMPEG_PATH or FFPROBE_PATH is not configured in the application.")
+        return jsonify({"error": "Server configuration error: FFmpeg path not set."}), 500
 
     # 進捗計算のために動画の長さを取得
-    video_duration = get_video_duration(FFPROBE_PATH, input_path)
+    video_duration = get_video_duration(ffprobe_path, input_path)
     if video_duration is None:
         os.remove(input_path)
         return jsonify({"error": "Could not get video information."}), 500
@@ -335,11 +346,12 @@ def start_conversion_task():
         return jsonify({"error": "Conversion duration must be positive."}), 400
 
     # タスクの初期状態を辞書に保存
-    tasks_db[task_id] = {'state': 'PENDING', 'output_path': output_path}
+    with tasks_db_lock:
+        tasks_db[task_id] = {'state': 'PENDING', 'output_path': output_path}
 
     # 変換ジョブのパラメータをデータクラスにまとめる
     job = ConversionJob(
-        ffmpeg_path=FFMPEG_PATH,
+        ffmpeg_path=ffmpeg_path,
         input_path=input_path,
         output_path=output_path,
         start_time=start_time,
@@ -359,11 +371,13 @@ def start_conversion_task():
 
 @app.route('/status/<task_id>')
 def get_task_status(task_id):
-    task_info = tasks_db.get(task_id)
-    if not task_info:
-        return jsonify({'state': 'NOT_FOUND'}), 404
-    
-    response_data = task_info.copy()
+    with tasks_db_lock:
+        task_info = tasks_db.get(task_id)
+        if not task_info:
+            return jsonify({'state': 'NOT_FOUND'}), 404
+        # ロック内で辞書のコピーを作成し、ロックの外で安全に操作できるようにします
+        response_data = task_info.copy()
+
     response_data['is_desktop_app'] = app.config.get('IS_DESKTOP_APP', False)
 
     # Webアプリモードの場合のみダウンロードURLを生成
