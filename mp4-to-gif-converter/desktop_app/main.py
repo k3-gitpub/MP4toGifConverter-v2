@@ -261,7 +261,7 @@ class Api:
         if mode not in ('loop', 'once'):
             mode = 'once'
         return {
-            'fps': self.config.get('fps', 15),
+            'fps': self.config.get('fps', 10),
             'width': self.config.get('width', 640),
             'high_quality': bool(self.config.get('high_quality', False)),
             'preview_playback_mode': mode,

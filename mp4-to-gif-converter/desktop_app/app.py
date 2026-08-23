@@ -283,7 +283,7 @@ def start_conversion_task():
         start_time = float(data.get('start_time', 0.0))
         end_time_str = data.get('end_time')
         end_time = float(end_time_str) if end_time_str and end_time_str.strip() else None
-        fps = int(data.get('fps', 15))
+        fps = int(data.get('fps', 10))
         width = int(data.get('width', 640))
         high_quality = data.get('high_quality', False)
         output_filename_from_form = data.get('output_filename')
