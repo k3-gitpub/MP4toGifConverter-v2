@@ -14,6 +14,8 @@ SetupIconFile=app_icon.ico
 ; 管理者権限を要求せず、ユーザーごとにインストールする
 PrivilegesRequired=lowest
 
+; 64ビットアプリのみ対応（32ビット Windows ではインストーラーを起動不可）
+ArchitecturesAllowed=x64compatible
 ; 64ビットOSでは64ビットモードでインストールする
 ArchitecturesInstallIn64BitMode=x64compatible
 DefaultDirName={userpf}\MP4-to-GIF-Converter
@@ -35,8 +37,8 @@ Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; PyInstaller onedir 出力（この .iss と同じフォルダからの相対パス）。
-; ビルド後の dist\MP4-to-GIF-Converter\ 一式をインストールします。
+; PyInstaller onedir 出力（build_desktop.ps1 / MP4-to-GIF-Converter.spec でビルド）。
+; FFmpeg は spec で desktop_app\bin\ を _internal\bin\ に同梱する。未ビルドだと起動時に失敗します。
 Source: "dist\MP4-to-GIF-Converter\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; ショートカット／アンインストーラ用アイコン
 Source: "app_icon.ico"; DestDir: "{app}"; Flags: ignoreversion

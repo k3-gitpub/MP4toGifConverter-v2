@@ -631,7 +631,8 @@
             <p class="modal-path" id="completion-modal-path"></p>
             <div class="modal-actions">
                 <button type="button" id="completion-open-folder" class="modal-btn-primary">保存先フォルダを開く</button>
-                <button type="button" id="completion-close" class="modal-btn-secondary">閉じる</button>
+                <button type="button" id="completion-select-file" class="modal-btn-secondary">別のファイルを選ぶ</button>
+                <button type="button" id="completion-close" class="modal-btn-secondary">このまま続ける</button>
             </div>
         </div>
     </div>
@@ -651,6 +652,7 @@
         const completionModal = document.getElementById('completion-modal');
         const completionModalPath = document.getElementById('completion-modal-path');
         const completionOpenFolderBtn = document.getElementById('completion-open-folder');
+        const completionSelectFileBtn = document.getElementById('completion-select-file');
         const completionCloseBtn = document.getElementById('completion-close');
         let lastOutputPath = null;
 
@@ -672,15 +674,21 @@
         }
 
         async function openOutputFolder(outputPath) {
-            if (!outputPath) return;
+            if (!outputPath) return false;
             try {
-                await fetch('/open-folder', {
+                const response = await fetch('/open-folder', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ path: outputPath })
                 });
+                if (!response.ok) {
+                    alert('フォルダを開けませんでした。');
+                    return false;
+                }
+                return true;
             } catch (err) {
                 alert('フォルダを開けませんでした。');
+                return false;
             }
         }
 
@@ -1043,18 +1051,15 @@
             bindPlayheadMarkerDrag();
             seekToTime(0, false);
 
-            let frozenPlayheadTime = 0;
-
             rangeSlider.on('start', () => {
                 isRangeDragging = true;
-                frozenPlayheadTime = videoPreview.currentTime;
             });
 
-            rangeSlider.on('end', (values) => {
+            rangeSlider.on('end', (values, handle) => {
                 isRangeDragging = false;
                 const start = parseFloat(values[0]);
                 const end = parseFloat(values[1]);
-                const markerTime = Math.min(Math.max(frozenPlayheadTime, start), end);
+                const markerTime = handle === 0 ? start : end;
                 videoPreview.currentTime = markerTime;
                 updatePlayheadMarker(markerTime);
             });
@@ -1075,9 +1080,8 @@
             rangeSlider.on('slide', (values, handle) => {
                 const start = parseFloat(values[0]);
                 const end = parseFloat(values[1]);
-                // カット位置プレビュー（▼マーカーは追従させない）
-                videoPreview.currentTime = handle === 0 ? start : end;
-                const markerTime = Math.min(Math.max(frozenPlayheadTime, start), end);
+                const markerTime = handle === 0 ? start : end;
+                videoPreview.currentTime = markerTime;
                 updatePlayheadMarker(markerTime);
             });
 
@@ -1147,6 +1151,10 @@
         }
 
         selectFileButton.addEventListener('click', openFilePicker);
+        completionSelectFileBtn.addEventListener('click', async () => {
+            hideCompletionModal();
+            await openFilePicker();
+        });
         previewPlaceholder.addEventListener('click', openFilePicker);
         previewPlaceholder.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
