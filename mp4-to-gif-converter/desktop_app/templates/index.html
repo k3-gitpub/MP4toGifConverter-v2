@@ -1229,6 +1229,7 @@
 
         form.addEventListener('submit', async (e) => { // ★★★ ステップB-2: 送信処理をJSONに変更 ★★★
             e.preventDefault();
+            videoPreview.pause();
 
             const payload = {
                 input_path: document.getElementById('selected-file-path').value,
