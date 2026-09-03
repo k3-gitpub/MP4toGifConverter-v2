@@ -4,6 +4,10 @@
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 
+Write-Host "Installing Python dependencies..."
+python -m pip install -r desktop_app/requirements.txt
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 Write-Host "Ensuring FFmpeg binaries are present..."
 python setup_ffmpeg.py
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
