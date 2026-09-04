@@ -148,6 +148,14 @@
             opacity: 0.45;
             cursor: not-allowed;
         }
+        #convert-button.is-converting {
+            background-color: #6c757d;
+            opacity: 1;
+            cursor: not-allowed;
+        }
+        #convert-button.is-converting:hover {
+            background-color: #6c757d;
+        }
         .file-select-group.is-pending .file-input-container {
             outline: 2px solid #007bff;
             outline-offset: 4px;
@@ -349,12 +357,19 @@
         .modal-actions .modal-btn-primary:hover {
             background: #218838;
         }
+        .modal-actions .modal-btn-action {
+            background: #007bff;
+            color: #fff;
+        }
+        .modal-actions .modal-btn-action:hover {
+            background: #0056b3;
+        }
         .modal-actions .modal-btn-secondary {
-            background: #e9ecef;
-            color: #343a40;
+            background: #6c757d;
+            color: #fff;
         }
         .modal-actions .modal-btn-secondary:hover {
-            background: #dee2e6;
+            background: #5a6268;
         }
         #slider-wrap {
             position: relative;
@@ -631,7 +646,7 @@
             <p class="modal-path" id="completion-modal-path"></p>
             <div class="modal-actions">
                 <button type="button" id="completion-open-folder" class="modal-btn-primary">保存先フォルダを開く</button>
-                <button type="button" id="completion-select-file" class="modal-btn-secondary">別のファイルを選ぶ</button>
+                <button type="button" id="completion-select-file" class="modal-btn-action">別のファイルを選ぶ</button>
                 <button type="button" id="completion-close" class="modal-btn-secondary">このまま続ける</button>
             </div>
         </div>
@@ -740,6 +755,16 @@
         const playbackModeOnceBtn = document.getElementById('playback-mode-once');
 
         let hasMediaReady = false;
+        let isConverting = false;
+        const CONVERT_LABEL = 'GIFに変換';
+        const CONVERTING_LABEL = 'GIFに変換中...';
+
+        function setConvertButtonBusy(busy) {
+            isConverting = !!busy;
+            convertButton.disabled = isConverting || !hasMediaReady;
+            convertButton.textContent = isConverting ? CONVERTING_LABEL : CONVERT_LABEL;
+            convertButton.classList.toggle('is-converting', isConverting);
+        }
 
         function setMediaReadyState(ready) {
             hasMediaReady = !!ready;
@@ -747,7 +772,7 @@
             fullscreenBtn.disabled = !hasMediaReady;
             playbackModeLoopBtn.disabled = !hasMediaReady;
             playbackModeOnceBtn.disabled = !hasMediaReady;
-            convertButton.disabled = !hasMediaReady;
+            convertButton.disabled = isConverting || !hasMediaReady;
             previewStage.classList.toggle('is-empty', !hasMediaReady);
             fileSelectGroup.classList.toggle('is-pending', !hasMediaReady);
             if (!hasMediaReady) {
@@ -1180,6 +1205,7 @@
                         statusDiv.className = 'error';
                         statusDiv.textContent = `ステータスの確認に失敗しました: ${response.statusText}`;
                         clearInterval(intervalId);
+                        setConvertButtonBusy(false);
                         return;
                     }
 
@@ -1187,6 +1213,7 @@
 
                     if (data.state === 'SUCCESS') { // ★★★ ステップ2: 変換完了後の処理を分岐 ★★★
                         clearInterval(intervalId);
+                        setConvertButtonBusy(false);
                         progressContainer.style.display = 'none';
                         statusDiv.className = 'success';
                         resultDiv.innerHTML = ''; // 以前の結果をクリア
@@ -1206,6 +1233,7 @@
 
                     } else if (data.state === 'FAILURE') {
                         clearInterval(intervalId);
+                        setConvertButtonBusy(false);
                         progressContainer.style.display = 'none';
                         statusDiv.className = 'error';
                         statusDiv.textContent = `エラー: 変換に失敗しました。詳細: ${data.error || '不明なエラー'}`;
@@ -1223,12 +1251,16 @@
                     statusDiv.className = 'error';
                     statusDiv.textContent = `ステータスの確認中にエラーが発生しました: ${error}`;
                     clearInterval(intervalId);
+                    setConvertButtonBusy(false);
                 }
             }, 2000); // 2秒ごとに状況を確認
         }
 
         form.addEventListener('submit', async (e) => { // ★★★ ステップB-2: 送信処理をJSONに変更 ★★★
             e.preventDefault();
+            if (isConverting) {
+                return;
+            }
             videoPreview.pause();
 
             const payload = {
@@ -1247,6 +1279,7 @@
                 return;
             }
 
+            setConvertButtonBusy(true);
             statusDiv.style.display = 'block';
             statusDiv.className = 'info';
             statusDiv.textContent = '変換リクエストを送信しています...';
@@ -1270,10 +1303,12 @@
                     const errorData = await response.json();
                     statusDiv.className = 'error';
                     statusDiv.textContent = `エラー: ${errorData.error || '不明なエラー'}`;
+                    setConvertButtonBusy(false);
                 }
             } catch (error) {
                 statusDiv.className = 'error';
                 statusDiv.textContent = `リクエストエラー: ${error}`;
+                setConvertButtonBusy(false);
             }
         });
 
