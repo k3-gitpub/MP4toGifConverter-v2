@@ -35,12 +35,15 @@ def get_ffmpeg_path():
 
 # --- アプリケーションデータディレクトリの設定 ---
 # 設定・ログは app.py の一時ファイルと同じ LocalAppData 配下に保存します。
-# 例: C:\Users\<ユーザー名>\AppData\Local\MP4-to-GIF-Converter
-# 旧版はホーム直下の ~/.mp4togifconverter を使っていたため、初回起動時に移します。
-LEGACY_APP_DATA_DIR = Path.home() / ".mp4togifconverter"
+# 例: C:\Users\<ユーザー名>\AppData\Local\MP4-to-GIF-Converter2
+# 旧版データがあれば初回起動時に未コピー分だけ移します。
+LEGACY_APP_DATA_DIRS = (
+    Path(os.getenv('LOCALAPPDATA', str(Path.home()))) / "MP4-to-GIF-Converter",
+    Path.home() / ".mp4togifconverter",
+)
 
 def _migrate_legacy_app_data(old_dir: Path, new_dir: Path) -> None:
-    """旧ホーム配下の設定・ログを LocalAppData へ、未コピー分だけ移す。"""
+    """旧版の設定・ログを新 LocalAppData へ、未コピー分だけ移す。"""
     try:
         if not old_dir.is_dir():
             return
@@ -59,7 +62,8 @@ def _migrate_legacy_app_data(old_dir: Path, new_dir: Path) -> None:
 try:
     APP_DATA_DIR = Path(app_data_dir)
     APP_DATA_DIR.mkdir(exist_ok=True)
-    _migrate_legacy_app_data(LEGACY_APP_DATA_DIR, APP_DATA_DIR)
+    for legacy_dir in LEGACY_APP_DATA_DIRS:
+        _migrate_legacy_app_data(legacy_dir, APP_DATA_DIR)
 except Exception as e:
     # データディレクトリが作れない稀なケースではカレントディレクトリにフォールバック
     # この時点ではロガーが未設定のため、標準エラー出力にフォールバック

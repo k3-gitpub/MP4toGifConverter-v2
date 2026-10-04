@@ -45,7 +45,7 @@ app.config['IS_DESKTOP_APP'] = False # デフォルトはWebアプリモード
 # --- アプリケーションデータフォルダの設定 ---
 # Program Filesなどの書き込み禁止領域にインストールされた場合でも
 # アプリが正常に動作できるよう、ユーザーのAppDataフォルダにデータ（一時ファイルなど）を保存します。
-APP_NAME = "MP4-to-GIF-Converter"
+APP_NAME = "MP4-to-GIF-Converter2"
 # C:\Users\<ユーザー名>\AppData\Local
 base_data_dir = os.getenv('LOCALAPPDATA')
 if not base_data_dir:

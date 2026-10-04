@@ -16,8 +16,8 @@ Write-Host "Building with PyInstaller..."
 pyinstaller --noconfirm MP4-to-GIF-Converter.spec
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$bundledFfmpeg = Join-Path $PSScriptRoot 'dist\MP4-to-GIF-Converter\_internal\bin\ffmpeg.exe'
-$bundledFfprobe = Join-Path $PSScriptRoot 'dist\MP4-to-GIF-Converter\_internal\bin\ffprobe.exe'
+$bundledFfmpeg = Join-Path $PSScriptRoot 'dist\MP4-to-GIF-Converter2\_internal\bin\ffmpeg.exe'
+$bundledFfprobe = Join-Path $PSScriptRoot 'dist\MP4-to-GIF-Converter2\_internal\bin\ffprobe.exe'
 
 foreach ($path in @($bundledFfmpeg, $bundledFfprobe)) {
     if (-not (Test-Path $path)) {
@@ -26,5 +26,5 @@ foreach ($path in @($bundledFfmpeg, $bundledFfprobe)) {
     }
 }
 
-Write-Host "Build OK. FFmpeg bundled at dist\MP4-to-GIF-Converter\_internal\bin\"
+Write-Host "Build OK. FFmpeg bundled at dist\MP4-to-GIF-Converter2\_internal\bin\"
 Write-Host "Next: compile MP4-to-GIF-Converter.iss with Inno Setup."
