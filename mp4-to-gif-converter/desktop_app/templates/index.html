@@ -847,7 +847,6 @@
 
         videoPreview.addEventListener('play', updatePlayPauseButton);
         videoPreview.addEventListener('pause', updatePlayPauseButton);
-        videoPreview.addEventListener('ended', updatePlayPauseButton);
 
         // --- ステップC: 最後に使用した保存先・変換設定を読み込む ---
         try {
@@ -1126,6 +1125,26 @@
         });
 
         // --- プレビュー再生を選択範囲に合わせる ---
+        function restartPreviewFromSelectionStart(shouldPlay) {
+            const range = getSelectionRange();
+            const start = range ? range.start : 0;
+            videoPreview.currentTime = start;
+            updatePlayheadMarker(start);
+            if (shouldPlay) {
+                videoPreview.play().catch((e) => console.error('Loop play failed:', e));
+            }
+        }
+
+        function onPreviewReachedSelectionEnd() {
+            if (previewPlaybackMode === 'loop') {
+                // ended 状態では currentTime の変更だけでは再開しないため play() も呼ぶ
+                restartPreviewFromSelectionStart(true);
+            } else {
+                videoPreview.pause();
+                restartPreviewFromSelectionStart(false);
+            }
+        }
+
         videoPreview.addEventListener('play', () => {
             const range = getSelectionRange();
             if (!range) return;
@@ -1142,16 +1161,17 @@
                 if (videoPreview.currentTime < range.start) {
                     videoPreview.currentTime = range.start;
                 } else if (videoPreview.currentTime >= range.end) {
-                    if (previewPlaybackMode === 'loop') {
-                        videoPreview.currentTime = range.start;
-                    } else {
-                        videoPreview.pause();
-                        videoPreview.currentTime = range.start;
-                    }
+                    onPreviewReachedSelectionEnd();
                 }
             }
 
             syncPlayheadFromVideo();
+        });
+
+        // 選択末尾が動画全体のとき、timeupdate より先に ended で止まることがある
+        videoPreview.addEventListener('ended', () => {
+            updatePlayPauseButton();
+            onPreviewReachedSelectionEnd();
         });
         // --- ステップB-1: UIイベントリスナーの変更 ---
         async function openFilePicker() {

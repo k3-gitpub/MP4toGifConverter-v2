@@ -306,6 +306,24 @@
         });
 
         // --- プレビュー再生を選択範囲に合わせる ---
+        function restartPreviewFromSelectionStart(shouldPlay) {
+            const range = getSelectionRange();
+            const start = range ? range.start : 0;
+            videoPreview.currentTime = start;
+            if (shouldPlay) {
+                videoPreview.play().catch((e) => console.error('Loop play failed:', e));
+            }
+        }
+
+        function onPreviewReachedSelectionEnd() {
+            if (previewPlaybackMode === 'loop') {
+                restartPreviewFromSelectionStart(true);
+            } else {
+                videoPreview.pause();
+                restartPreviewFromSelectionStart(false);
+            }
+        }
+
         videoPreview.addEventListener('play', () => {
             const range = getSelectionRange();
             if (!range) return;
@@ -320,13 +338,12 @@
             if (videoPreview.currentTime < range.start) {
                 videoPreview.currentTime = range.start;
             } else if (videoPreview.currentTime >= range.end) {
-                if (previewPlaybackMode === 'loop') {
-                    videoPreview.currentTime = range.start;
-                } else {
-                    videoPreview.pause();
-                    videoPreview.currentTime = range.start;
-                }
+                onPreviewReachedSelectionEnd();
             }
+        });
+
+        videoPreview.addEventListener('ended', () => {
+            onPreviewReachedSelectionEnd();
         });
 
         // ファイルが選択されたときの処理
