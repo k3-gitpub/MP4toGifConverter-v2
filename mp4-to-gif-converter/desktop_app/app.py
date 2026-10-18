@@ -128,14 +128,16 @@ def conversion_worker_thread(task_id: str, job: ConversionJob):
     """
     # --- FFmpegコマンドの組み立て ---
     # 外部ライブラリに依存せず、直接コマンドを生成することでエラーハンドリングを堅牢にします。
+    # -ss の後に絶対時刻の -to を使うと、シーク後に時刻が 0 から数え直されたとき
+    # クリップが (終了時刻) 秒分になってしまうため、長さは -t (終了-開始) で指定する。
     command = [
         job.ffmpeg_path,
         '-y',  # 出力ファイルを常に上書き
-        '-ss', str(job.start_time), # 開始時間
-        '-i', job.input_path,      # 入力ファイル
+        '-ss', str(job.start_time),  # 開始時間
     ]
     if job.end_time is not None:
-        command.extend(['-to', str(job.end_time)]) # 終了時間
+        command.extend(['-t', str(job.conversion_duration)])
+    command.extend(['-i', job.input_path])
 
     # ビデオフィルターの設定
     filters = [
